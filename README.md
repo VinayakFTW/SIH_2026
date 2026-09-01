@@ -118,12 +118,12 @@ The client expects an object containing a `results` array:
 
 ## API
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `GET` | `/health` | Check backend status |
-| `POST` | `/api/v1/forecast/pcap` | Analyze a `.pcap` or `.pcapng` file |
-| `GET` | `/api/v1/intel/mitre/{attack_type}` | Retrieve MITRE enrichment |
-| `POST` | `/api/v1/summarize` | Generate a Groq executive summary |
+| Method | Endpoint                            | Purpose                             |
+| ------ | ----------------------------------- | ----------------------------------- |
+| `GET`  | `/health`                           | Check backend status                |
+| `POST` | `/api/v1/forecast/pcap`             | Analyze a `.pcap` or `.pcapng` file |
+| `GET`  | `/api/v1/intel/mitre/{attack_type}` | Retrieve MITRE enrichment           |
+| `POST` | `/api/v1/summarize`                 | Generate a Groq executive summary   |
 
 Example summary request:
 
