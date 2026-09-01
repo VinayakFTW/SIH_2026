@@ -1,0 +1,258 @@
+{
+  "processed_flows": 500,
+  "results": [
+    {
+      "flow_id": "192.168.1.105:52841->10.0.0.1:443_TCP",
+      "metrics": {
+        "duration": 2.341,
+        "total_fwd_packets": 23,
+        "total_bwd_packets": 18,
+        "total_length": 18576,
+        "mean_packet_length": 412.8,
+        "std_packet_length": 128.3,
+        "mean_iat": 0.0987,
+        "std_iat": 0.0312,
+        "packets_per_second": 17.5,
+        "bytes_per_second": 7932.2
+      },
+      "threat_assessment": {
+        "tactic": "Command and Control",
+        "technique_id": "T1572",
+        "technique_name": "Protocol Tunneling",
+        "severity": "Critical",
+        "anomaly_score": 0.9147,
+        "forecasting_horizon_sec": 30.0
+      }
+    },
+    {
+      "flow_id": "192.168.1.110:50342->172.16.0.5:22_TCP",
+      "metrics": {
+        "duration": 5.892,
+        "total_fwd_packets": 45,
+        "total_bwd_packets": 38,
+        "total_length": 45892,
+        "mean_packet_length": 512.5,
+        "std_packet_length": 156.7,
+        "mean_iat": 0.1234,
+        "std_iat": 0.0456,
+        "packets_per_second": 14.1,
+        "bytes_per_second": 7784.4
+      },
+      "threat_assessment": {
+        "tactic": "Credential Access",
+        "technique_id": "T1110",
+        "technique_name": "Brute Force",
+        "severity": "High",
+        "anomaly_score": 0.8654,
+        "forecasting_horizon_sec": 30.0
+      }
+    },
+    {
+      "flow_id": "192.168.1.115:49156->8.8.8.8:53_UDP",
+      "metrics": {
+        "duration": 0.456,
+        "total_fwd_packets": 8,
+        "total_bwd_packets": 8,
+        "total_length": 2048,
+        "mean_packet_length": 128.0,
+        "std_packet_length": 0.0,
+        "mean_iat": 0.0285,
+        "std_iat": 0.00123,
+        "packets_per_second": 35.09,
+        "bytes_per_second": 4491.2
+      },
+      "threat_assessment": {
+        "tactic": "Reconnaissance",
+        "technique_id": "T1046",
+        "technique_name": "Network Service Discovery",
+        "severity": "Low",
+        "anomaly_score": 0.1823,
+        "forecasting_horizon_sec": 30.0
+      }
+    },
+    {
+      "flow_id": "192.168.1.120:45678->10.20.30.40:80_TCP",
+      "metrics": {
+        "duration": 12.567,
+        "total_fwd_packets": 156,
+        "total_bwd_packets": 142,
+        "total_length": 285764,
+        "mean_packet_length": 938.2,
+        "std_packet_length": 234.5,
+        "mean_iat": 0.0789,
+        "std_iat": 0.0234,
+        "packets_per_second": 23.7,
+        "bytes_per_second": 22736.8
+      },
+      "threat_assessment": {
+        "tactic": "Impact",
+        "technique_id": "T1498",
+        "technique_name": "Network Denial of Service",
+        "severity": "High",
+        "anomaly_score": 0.7892,
+        "forecasting_horizon_sec": 30.0
+      }
+    },
+    {
+      "flow_id": "192.168.1.125:54321->192.168.1.1:443_TCP",
+      "metrics": {
+        "duration": 1.234,
+        "total_fwd_packets": 12,
+        "total_bwd_packets": 11,
+        "total_length": 8956,
+        "mean_packet_length": 391.1,
+        "std_packet_length": 98.2,
+        "mean_iat": 0.0978,
+        "std_iat": 0.0145,
+        "packets_per_second": 18.6,
+        "bytes_per_second": 7263.2
+      },
+      "threat_assessment": {
+        "tactic": "Reconnaissance",
+        "technique_id": "T1046",
+        "technique_name": "Network Service Discovery",
+        "severity": "Medium",
+        "anomaly_score": 0.4521,
+        "forecasting_horizon_sec": 30.0
+      }
+    },
+    {
+      "flow_id": "10.0.0.50:60000->192.168.1.30:3306_TCP",
+      "metrics": {
+        "duration": 0.892,
+        "total_fwd_packets": 6,
+        "total_bwd_packets": 4,
+        "total_length": 1542,
+        "mean_packet_length": 154.2,
+        "std_packet_length": 32.1,
+        "mean_iat": 0.1485,
+        "std_iat": 0.0234,
+        "packets_per_second": 11.2,
+        "bytes_per_second": 1729.0
+      },
+      "threat_assessment": {
+        "tactic": "Reconnaissance",
+        "technique_id": "T0000",
+        "technique_name": "Uncategorized Anomaly",
+        "severity": "Unknown",
+        "anomaly_score": 0.0456,
+        "forecasting_horizon_sec": 30.0
+      }
+    },
+    {
+      "flow_id": "172.31.0.100:38456->10.0.0.1:443_TCP",
+      "metrics": {
+        "duration": 8.234,
+        "total_fwd_packets": 78,
+        "total_bwd_packets": 72,
+        "total_length": 156234,
+        "mean_packet_length": 1045.6,
+        "std_packet_length": 278.9,
+        "mean_iat": 0.1034,
+        "std_iat": 0.0567,
+        "packets_per_second": 18.3,
+        "bytes_per_second": 18976.4
+      },
+      "threat_assessment": {
+        "tactic": "Defense Evasion",
+        "technique_id": "T1222",
+        "technique_name": "File and Directory Permissions Modification",
+        "severity": "Medium",
+        "anomaly_score": 0.5678,
+        "forecasting_horizon_sec": 30.0
+      }
+    },
+    {
+      "flow_id": "192.168.1.135:44123->8.8.4.4:53_UDP",
+      "metrics": {
+        "duration": 0.234,
+        "total_fwd_packets": 3,
+        "total_bwd_packets": 3,
+        "total_length": 512,
+        "mean_packet_length": 85.3,
+        "std_packet_length": 0.0,
+        "mean_iat": 0.0780,
+        "std_iat": 0.0,
+        "packets_per_second": 25.64,
+        "bytes_per_second": 2188.0
+      },
+      "threat_assessment": {
+        "tactic": "Reconnaissance",
+        "technique_id": "T1046",
+        "technique_name": "Network Service Discovery",
+        "severity": "Low",
+        "anomaly_score": 0.0892,
+        "forecasting_horizon_sec": 30.0
+      }
+    },
+    {
+      "flow_id": "192.168.1.140:56789->10.50.60.70:445_TCP",
+      "metrics": {
+        "duration": 42.156,
+        "total_fwd_packets": 523,
+        "total_bwd_packets": 487,
+        "total_length": 892345,
+        "mean_packet_length": 845.7,
+        "std_packet_length": 189.3,
+        "mean_iat": 0.0789,
+        "std_iat": 0.0234,
+        "packets_per_second": 23.9,
+        "bytes_per_second": 21163.8
+      },
+      "threat_assessment": {
+        "tactic": "Impact",
+        "technique_id": "T1498",
+        "technique_name": "Network Denial of Service",
+        "severity": "Critical",
+        "anomaly_score": 0.9234,
+        "forecasting_horizon_sec": 30.0
+      }
+    },
+    {
+      "flow_id": "192.168.1.145:41234->1.1.1.1:443_TCP",
+      "metrics": {
+        "duration": 3.567,
+        "total_fwd_packets": 28,
+        "total_bwd_packets": 25,
+        "total_length": 34567,
+        "mean_packet_length": 654.1,
+        "std_packet_length": 145.6,
+        "mean_iat": 0.1234,
+        "std_iat": 0.0456,
+        "packets_per_second": 14.8,
+        "bytes_per_second": 9691.6
+      },
+      "threat_assessment": {
+        "tactic": "Reconnaissance",
+        "technique_id": "T1046",
+        "technique_name": "Network Service Discovery",
+        "severity": "Low",
+        "anomaly_score": 0.2145,
+        "forecasting_horizon_sec": 30.0
+      }
+    },
+    {
+      "flow_id": "10.0.0.75:39876->192.168.1.50:3389_TCP",
+      "metrics": {
+        "duration": 15.234,
+        "total_fwd_packets": 134,
+        "total_bwd_packets": 128,
+        "total_length": 234567,
+        "mean_packet_length": 896.4,
+        "std_packet_length": 234.5,
+        "mean_iat": 0.1134,
+        "std_iat": 0.0345,
+        "packets_per_second": 17.1,
+        "bytes_per_second": 15389.2
+      },
+      "threat_assessment": {
+        "tactic": "Lateral Movement",
+        "technique_id": "T1570",
+        "technique_name": "Lateral Tool Transfer",
+        "severity": "High",
+        "anomaly_score": 0.7654,
+        "forecasting_horizon_sec": 30.0
+      }
+    }
+  ]
+}
