@@ -70,7 +70,7 @@ class UnifiedNetworkDataset(Dataset):
                 rename_dict[df_cols_lower[src_col]] = target_col
 
         df = df.rename(columns=rename_dict)
-
+        df = df.loc[:, ~df.columns.duplicated()]
         available_cols = [c for c in CANONICAL_FEATURES if c in df.columns]
         df = df[available_cols]
 

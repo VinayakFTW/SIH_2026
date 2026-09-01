@@ -8,7 +8,7 @@ from controllers.core.threat_intel_controller import get_mitre_mapping
 app = FastAPI(
     title="Network Attack Forecasting Engine",
     description="Real-time predictive telemetry engine trained on intrusion datasets and mapped to MITRE ATT&CK.",
-    version="1.0.0"
+    version="0.1.0"
 )
 
 app.add_api_route(

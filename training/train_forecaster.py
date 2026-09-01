@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import DataLoader, random_split
-from training.dataset_loaders import UnifiedNetworkDataset
+from training.datasets_loader import UnifiedNetworkDataset
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
