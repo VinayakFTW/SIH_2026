@@ -6,3 +6,4 @@ torch
 transformers
 pyshark
 scikit-learn
+python-multipart
