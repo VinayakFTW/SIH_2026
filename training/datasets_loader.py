@@ -33,7 +33,7 @@ class UnifiedNetworkDataset(Dataset):
         self.raw_df = self._load_and_harmonize_all()
         
         feature_cols = [col for col in self.raw_df.columns if col != "label"]
-        raw_features = self.raw_df[feature_cols].values.astype(np.float32)
+        raw_features = self.raw_df[feature_cols].values.astype(np.float64)
         
         labels = self.raw_df["label"].apply(lambda x: 0 if str(x).strip().lower() in ["benign", "normal", "0"] else 1).values
 
@@ -71,6 +71,9 @@ class UnifiedNetworkDataset(Dataset):
 
         df = df.rename(columns=rename_dict)
         df = df.loc[:, ~df.columns.duplicated()]
+        if "Timestamp" in df.columns:
+            df["Timestamp"] = pd.to_datetime(df["Timestamp"], dayfirst=True, errors="coerce").apply(lambda x: x.timestamp() if pd.notna(x) else 0.0)
+
         available_cols = [c for c in CANONICAL_FEATURES if c in df.columns]
         df = df[available_cols]
 
@@ -83,6 +86,10 @@ class UnifiedNetworkDataset(Dataset):
         return df[CANONICAL_FEATURES]
 
     def _load_and_harmonize_all(self) -> pd.DataFrame:
+        unified_path = self.datasets_dir / "unified_dataset.parquet"
+        if unified_path.exists():
+            return pd.read_parquet(unified_path, engine="pyarrow")
+
         data_files = list(self.datasets_dir.glob("*.parquet")) + list(self.datasets_dir.glob("*.csv"))
         if not data_files:
             raise FileNotFoundError(f"No .csv or .parquet files found in directory: {self.datasets_dir.resolve()}")
@@ -102,6 +109,11 @@ class UnifiedNetworkDataset(Dataset):
             dataframes.append(df)
 
         return pd.concat(dataframes, ignore_index=True)
+
+    def export_to_parquet(self, filename: str = "unified_dataset.parquet"):
+        output_path = self.datasets_dir / filename
+        self.raw_df.to_parquet(output_path, engine="pyarrow")
+        print(f"Exported unified dataset to {output_path}")
 
     def __len__(self) -> int:
         return max(0, len(self.scaled_features) - self.sequence_length - self.prediction_horizon + 1)
