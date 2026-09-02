@@ -1,6 +1,14 @@
 .vscode
 .venv
+venv
+node_modules
+client/dist
 .env
+config.env
 **/__pycache__/
 *.pyc
 datasets
+.DS_Store
+*.log
+.env.*
+!.env.example
