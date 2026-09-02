@@ -1,0 +1,28 @@
+{
+  "processed_flows": 1,
+  "results": [
+    {
+      "flow_id": "2.1.1.2:0 <-> 2.1.1.1:0",
+      "detected_label": "DoS-GoldenEye",
+      "anomaly_score": 1.8157,
+      "metrics": {
+        "flow_id": "2.1.1.2:0 <-> 2.1.1.1:0",
+        "src_ip": "2.1.1.2",
+        "dst_ip": "2.1.1.1",
+        "dst_port": 0,
+        "protocol": 1,
+        "tot_fwd_pkts": 3,
+        "tot_bwd_pkts": 0,
+        "flow_duration": 0.0005090236663818359
+      },
+      "threat_assessment": {
+        "tactic": "Unknown",
+        "technique_id": "T0000",
+        "technique_name": "Uncategorized Anomaly",
+        "severity": "Informational",
+        "anomaly_score": 1.8157343864440918,
+        "forecasting_horizon_sec": 30.0
+      }
+    }
+  ]
+}

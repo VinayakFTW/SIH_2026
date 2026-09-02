@@ -3,45 +3,118 @@ from collections import defaultdict
 from typing import List, Dict, Any
 
 class FlowAggregator:
-    def __init__(self, window_seconds: float = 5.0):
-        self.window_seconds = window_seconds
+    def __init__(self):
+        pass
 
-    def aggregate_flows(self, packets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        flows = defaultdict(list)
+    def _extract_packet_meta(self, pkt):
+        """Safely extracts 5-tuple and packet length/timestamp across PyShark or Scapy."""
+        # --- Handle PyShark Packet Objects ---
+        if hasattr(pkt, "layers"):
+            ip_layer = getattr(pkt, "ip", None) or getattr(pkt, "ipv6", None)
+            if not ip_layer:
+                return None  # Non-IP packet (ARP, STP, LLC, etc.)
 
-        # Group by bidirectional 5-tuple
-        for pkt in packets:
-            endpoints = tuple(sorted([(pkt["src_ip"], pkt["src_port"]), (pkt["dst_ip"], pkt["dst_port"])]))
-            flow_key = (endpoints[0], endpoints[1], pkt["protocol"])
-            flows[flow_key].append(pkt)
+            src_ip = ip_layer.src
+            dst_ip = ip_layer.dst
+            proto = int(getattr(ip_layer, "proto", getattr(ip_layer, "nxt", 0)))
 
-        flow_features = []
-        for key, pkts in flows.items():
-            pkts = sorted(pkts, key=lambda x: x["timestamp"])
-            timestamps = [p["timestamp"] for p in pkts]
-            lengths = [p["length"] for p in pkts]
+            src_port = 0
+            dst_port = 0
+            if hasattr(pkt, "tcp"):
+                src_port = int(pkt.tcp.srcport)
+                dst_port = int(pkt.tcp.dstport)
+            elif hasattr(pkt, "udp"):
+                src_port = int(pkt.udp.srcport)
+                dst_port = int(pkt.udp.dstport)
 
-            duration = timestamps[-1] - timestamps[0] if len(timestamps) > 1 else 0.001
-            iats = np.diff(timestamps) if len(timestamps) > 1 else [0.0]
+            length = int(pkt.length) if hasattr(pkt, "length") else 0
+            timestamp = float(pkt.sniff_timestamp) if hasattr(pkt, "sniff_timestamp") else 0.0
 
-            # Forward / Backward split based on flow initiator
-            initiator_ip = pkts[0]["src_ip"]
-            fwd_pkts = [p for p in pkts if p["src_ip"] == initiator_ip]
-            bwd_pkts = [p for p in pkts if p["src_ip"] != initiator_ip]
-
-            flow_record = {
-                "flow_id": f"{key[0][0]}:{key[0][1]}->{key[1][0]}:{key[1][1]}_{key[2]}",
-                "duration": duration,
-                "total_fwd_packets": len(fwd_pkts),
-                "total_bwd_packets": len(bwd_pkts),
-                "total_length": sum(lengths),
-                "mean_packet_length": float(np.mean(lengths)),
-                "std_packet_length": float(np.std(lengths)) if len(lengths) > 1 else 0.0,
-                "mean_iat": float(np.mean(iats)),
-                "std_iat": float(np.std(iats)) if len(iats) > 1 else 0.0,
-                "bytes_per_second": sum(lengths) / duration if duration > 0 else 0.0,
-                "packets_per_second": len(pkts) / duration if duration > 0 else 0.0,
+            return {
+                "src_ip": src_ip,
+                "dst_ip": dst_ip,
+                "src_port": src_port,
+                "dst_port": dst_port,
+                "protocol": proto,
+                "length": length,
+                "timestamp": timestamp,
+                "raw_pkt": pkt
             }
-            flow_features.append(flow_record)
 
-        return flow_features
+        # --- Handle Scapy Packet Objects (Fallback if switched to Scapy) ---
+        elif hasattr(pkt, "haslayer"):
+            from scapy.layers.inet import IP, TCP, UDP
+            from scapy.layers.inet6 import IPv6
+
+            if not (pkt.haslayer(IP) or pkt.haslayer(IPv6)):
+                return None
+
+            ip_layer = pkt[IP] if pkt.haslayer(IP) else pkt[IPv6]
+            src_ip = ip_layer.src
+            dst_ip = ip_layer.dst
+            proto = ip_layer.proto if hasattr(ip_layer, "proto") else 0
+
+            src_port = 0
+            dst_port = 0
+            if pkt.haslayer(TCP):
+                src_port = pkt[TCP].sport
+                dst_port = pkt[TCP].dport
+            elif pkt.haslayer(UDP):
+                src_port = pkt[UDP].sport
+                dst_port = pkt[UDP].dport
+
+            length = len(pkt)
+            timestamp = float(pkt.time)
+
+            return {
+                "src_ip": src_ip,
+                "dst_ip": dst_ip,
+                "src_port": src_port,
+                "dst_port": dst_port,
+                "protocol": proto,
+                "length": length,
+                "timestamp": timestamp,
+                "raw_pkt": pkt
+            }
+
+        return None
+
+    def aggregate_flows(self, packets):
+        flow_groups = {}
+
+        for pkt in packets:
+            meta = self._extract_packet_meta(pkt)
+            if not meta:
+                continue  # Skip unroutable/non-IP packets
+
+            # Bidirectional 5-tuple flow key
+            endpoints = tuple(sorted([
+                (meta["src_ip"], meta["src_port"]),
+                (meta["dst_ip"], meta["dst_port"])
+            ]))
+            flow_key = (endpoints, meta["protocol"])
+
+            if flow_key not in flow_groups:
+                flow_groups[flow_key] = []
+            flow_groups[flow_key].append(meta)
+
+        flows = []
+        for (endpoints, proto), pkt_list in flow_groups.items():
+            first_pkt = pkt_list[0]
+            flow_id = f"{first_pkt['src_ip']}:{first_pkt['src_port']} <-> {first_pkt['dst_ip']}:{first_pkt['dst_port']}"
+            
+            # Base flow metadata dictionary
+            flow_dict = {
+                "flow_id": flow_id,
+                "src_ip": first_pkt["src_ip"],
+                "dst_ip": first_pkt["dst_ip"],
+                "dst_port": first_pkt["dst_port"],
+                "protocol": proto,
+                "tot_fwd_pkts": len(pkt_list),
+                "tot_bwd_pkts": 0,
+                "flow_duration": max(p["timestamp"] for p in pkt_list) - min(p["timestamp"] for p in pkt_list),
+            }
+
+            flows.append(flow_dict)
+
+        return flows
