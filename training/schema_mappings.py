@@ -1,7 +1,6 @@
 CANONICAL_FEATURES = [
     "dst_port",
     "protocol",
-    "Timestamp",
     "flow_duration",
     "tot_fwd_pkts",
     "tot_bwd_pkts",

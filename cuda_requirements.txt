@@ -7,6 +7,8 @@ pyshark
 scikit-learn
 python-multipart
 pyarrow
+darts
+pytorch-lightning
 # make sure you have CUDA 13.0 from Nvidia Installed
 # seperately run the following according to your system:
 # Windows-> pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu130

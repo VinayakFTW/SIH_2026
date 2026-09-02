@@ -8,3 +8,5 @@ pyshark
 scikit-learn
 python-multipart
 pyarrow
+darts
+pytorch-lightning

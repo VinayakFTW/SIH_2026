@@ -1,138 +1,86 @@
-import os
-import glob
-from pathlib import Path
-from typing import List, Optional, Tuple
-
-import numpy as np
 import pandas as pd
+import numpy as np
 import torch
 from torch.utils.data import Dataset
-from sklearn.preprocessing import RobustScaler
 
-from training.schema_mappings import CANONICAL_FEATURES, DATASET_COLUMN_MAPPINGS
+ATTACK_CLASSES = [
+    "attack_bot", "attack_dos_slowhttptest", "attack_dos_hulk",
+    "attack_bruteforce_web", "attack_bruteforce_xss", "attack_sql_injection",
+    "attack_ddos_loic_http", "attack_infiltration", "attack_dos_goldeneye",
+    "attack_dos_slowloris", "attack_ftp_bruteforce", "attack_ssh_bruteforce",
+    "attack_ddos_loic_udp", "attack_ddos_hoic"
+]
 
-
-class UnifiedNetworkDataset(Dataset):
-    """
-    Unified PyTorch dataset that loads and normalizes all .parquet and .csv 
-    files from the root 'datasets/' folder.
-    """
+class SequenceDataset(Dataset):
     def __init__(
         self,
-        datasets_dir: str = "datasets",
-        sequence_length: int = 20,
-        prediction_horizon: int = 1,
-        scaler: Optional[RobustScaler] = None,
-        is_train: bool = True
+        df: pd.DataFrame,
+        numeric_cols: list,
+        label_col: str = "Label",
+        seq_len: int = 32,
+        stride: int = 16,
+        scaler_stats: tuple = None,
+        num_ports: int = 65536,
+        num_protocols: int = 256
     ):
-        self.datasets_dir = Path(datasets_dir)
-        self.sequence_length = sequence_length
-        self.prediction_horizon = prediction_horizon
-        self.is_train = is_train
+        self.seq_len = seq_len
+        self.stride = stride
+        self.has_labels = label_col is not None and label_col in df.columns
 
-        self.raw_df = self._load_and_harmonize_all()
-        
-        feature_cols = [col for col in self.raw_df.columns if col != "label"]
-        raw_features = self.raw_df[feature_cols].values.astype(np.float64)
-        
-        labels = self.raw_df["label"].apply(lambda x: 0 if str(x).strip().lower() in ["benign", "normal", "0"] else 1).values
+        # Extract Categorical Features
+        dst_ports = df["dst_port"].fillna(0).to_numpy(dtype=np.int64) if "dst_port" in df.columns else np.zeros(len(df), dtype=np.int64)
+        protocols = df["protocol"].fillna(0).to_numpy(dtype=np.int64) if "protocol" in df.columns else np.zeros(len(df), dtype=np.int64)
 
-        # Feature scaling (RobustScaler handles heavy-tailed network outliers)
-        if self.is_train or scaler is None:
-            self.scaler = RobustScaler(quantile_range=(5.0, 95.0))
-            self.scaled_features = self.scaler.fit_transform(raw_features)
+        # Clip categorical values to valid range
+        self.dst_ports = np.clip(dst_ports, 0, num_ports - 1)
+        self.protocols = np.clip(protocols, 0, num_protocols - 1)
+
+        # Extract & Clean Continuous Features
+        raw_num = df[numeric_cols].to_numpy(dtype=np.float32)
+        raw_num = np.nan_to_num(raw_num, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # Z-Score Standard Scaling
+        if scaler_stats is None:
+            self.mean = np.mean(raw_num, axis=0, keepdims=True)
+            self.std = np.std(raw_num, axis=0, keepdims=True) + 1e-6
         else:
-            self.scaler = scaler
-            self.scaled_features = self.scaler.transform(raw_features)
+            self.mean, self.std = scaler_stats
 
-        self.labels = labels
+        self.data_num = (raw_num - self.mean) / self.std
 
-    def _detect_format_and_read(self, file_path: Path) -> pd.DataFrame:
-        """Reads CSV or Parquet files based on file extension."""
-        ext = file_path.suffix.lower()
-        if ext == ".parquet":
-            return pd.read_parquet(file_path, engine="pyarrow")
-        elif ext == ".csv":
-            return pd.read_csv(file_path, low_memory=False)
-        else:
-            return pd.DataFrame()
-
-    def _normalize_columns(self, df: pd.DataFrame, filename: str) -> pd.DataFrame:
-        """Applies column alias transformations to align with CANONICAL_FEATURES."""
-        df_cols_lower = {col.strip(): col for col in df.columns}
-        
-        mapping_key = "unsw" if "unsw" in filename.lower() else "cic"
-        mapping = DATASET_COLUMN_MAPPINGS.get(mapping_key, {})
-
-        rename_dict = {}
-        for src_col, target_col in mapping.items():
-            if src_col in df_cols_lower:
-                rename_dict[df_cols_lower[src_col]] = target_col
-
-        df = df.rename(columns=rename_dict)
-        df = df.loc[:, ~df.columns.duplicated()]
-        if "Timestamp" in df.columns:
-            df["Timestamp"] = pd.to_datetime(df["Timestamp"], dayfirst=True, errors="coerce").apply(lambda x: x.timestamp() if pd.notna(x) else 0.0)
-
-        available_cols = [c for c in CANONICAL_FEATURES if c in df.columns]
-        df = df[available_cols]
-
-        for missing_col in set(CANONICAL_FEATURES) - set(available_cols):
-            if missing_col == "label":
-                df[missing_col] = "BENIGN"
-            else:
-                df[missing_col] = 0.0
-
-        return df[CANONICAL_FEATURES]
-
-    def _load_and_harmonize_all(self) -> pd.DataFrame:
-        unified_path = self.datasets_dir / "unified_dataset.parquet"
-        if unified_path.exists():
-            return pd.read_parquet(unified_path, engine="pyarrow")
-
-        data_files = list(self.datasets_dir.glob("*.parquet")) + list(self.datasets_dir.glob("*.csv"))
-        if not data_files:
-            raise FileNotFoundError(f"No .csv or .parquet files found in directory: {self.datasets_dir.resolve()}")
-
-        dataframes = []
-        for file in data_files:
-            df = self._detect_format_and_read(file)
-            if df.empty:
-                continue
-
-            df = self._normalize_columns(df, file.name)
+        # Process Multi-Class Attack Labels
+        if self.has_labels:
+            # Map labels: 0 -> Benign, 1..N -> Specific Attack Classes
+            label_map = {cls_name.lower(): idx + 1 for idx, cls_name in enumerate(ATTACK_CLASSES)}
             
-            num_cols = [c for c in df.columns if c != "label"]
-            df[num_cols] = df[num_cols].replace([np.inf, -np.inf], np.nan)
-            df[num_cols] = df[num_cols].fillna(0.0)
+            def map_label(val):
+                s = str(val).strip().lower()
+                if s == "benign" or s == "0":
+                    return 0
+                return label_map.get(s, 1) # Default fallback to class 1 if unmapped attack
 
-            dataframes.append(df)
+            self.labels = df[label_col].apply(map_label).to_numpy(dtype=np.int64)
+        else:
+            self.labels = None
 
-        return pd.concat(dataframes, ignore_index=True)
+        self.num_samples = max(0, (len(df) - self.seq_len) // self.stride)
 
-    def export_to_parquet(self, filename: str = "unified_dataset.parquet"):
-        output_path = self.datasets_dir / filename
-        self.raw_df.to_parquet(output_path, engine="pyarrow")
-        print(f"Exported unified dataset to {output_path}")
+    def __len__(self):
+        return self.num_samples
 
-    def __len__(self) -> int:
-        return max(0, len(self.scaled_features) - self.sequence_length - self.prediction_horizon + 1)
+    def __getitem__(self, idx):
+        start = idx * self.stride
+        end = start + self.seq_len
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Returns:
-            x_seq: [sequence_length, num_features] - Historical traffic window
-            y_forecasting: [num_features] - Future traffic vector at (t + horizon)
-            y_threat_label: scalar (0 = Benign, 1 = Attack progression)
-        """
-        x_seq = self.scaled_features[idx : idx + self.sequence_length]
-        target_idx = idx + self.sequence_length + self.prediction_horizon - 1
-        
-        y_forecasting = self.scaled_features[target_idx]
-        y_threat_label = self.labels[target_idx]
+        x_num = torch.tensor(self.data_num[start:end], dtype=torch.float32)
+        x_cat = {
+            "dst_port": torch.tensor(self.dst_ports[start:end], dtype=torch.long),
+            "protocol": torch.tensor(self.protocols[start:end], dtype=torch.long)
+        }
 
-        return (
-            torch.tensor(x_seq, dtype=torch.float32),
-            torch.tensor(y_forecasting, dtype=torch.float32),
-            torch.tensor(y_threat_label, dtype=torch.float32)
-        )
+        if self.has_labels:
+            # Sequence token-level class labels [seq_len]
+            seq_labels = torch.tensor(self.labels[start:end], dtype=torch.long)
+            return x_num, x_cat, seq_labels
+
+        return x_num, x_cat
