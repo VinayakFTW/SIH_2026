@@ -17,8 +17,37 @@ const demoFlows = [
 
 const colors = { Critical: '#f06b5f', High: '#efaa55', Medium: '#e4c46a', Low: '#55b7a5', Unknown: '#758195' }
 
+function normalizeScore(raw) {
+  const score = Number(raw) || 0
+  return 1 - Math.exp(-Math.max(score, 0))
+}
+
+function firstNumber(...values) {
+  const value = values.find((candidate) => candidate !== undefined && candidate !== null)
+  return Number(value) || 0
+}
+
 function normalizeResults(payload) {
-  return (payload?.results || []).map((flow) => ({ ...flow, metrics: flow.metrics || {}, threat_assessment: flow.threat_assessment || {} }))
+  return (payload?.results || []).map((flow) => {
+    const rawMetrics = flow.metrics || {}
+    const rawAssessment = flow.threat_assessment || {}
+    const rawScore = flow.anomaly_score ?? rawAssessment.anomaly_score
+
+    return {
+      ...flow,
+      metrics: {
+        ...rawMetrics,
+        total_fwd_packets: firstNumber(rawMetrics.total_fwd_packets, rawMetrics.tot_fwd_pkts),
+        total_bwd_packets: firstNumber(rawMetrics.total_bwd_packets, rawMetrics.tot_bwd_pkts),
+        total_bytes: firstNumber(rawMetrics.total_bytes, rawMetrics.total_length),
+        duration: firstNumber(rawMetrics.duration, rawMetrics.flow_duration),
+      },
+      threat_assessment: {
+        ...rawAssessment,
+        anomaly_score: normalizeScore(rawScore),
+      },
+    }
+  })
 }
 
 function formatBytes(value = 0) {
@@ -29,7 +58,7 @@ function formatBytes(value = 0) {
 
 function reasonFor(flow) {
   const { metrics: m, threat_assessment: t } = flow
-  const reasons = [`Model confidence is ${(t.anomaly_score * 100).toFixed(0)}%, above the 0.50 alert threshold.`]
+  const reasons = [`Anomaly score ${t.anomaly_score.toFixed(3)}, above the 0.50 alert threshold.`]
   if (m.packets_per_second > 500) reasons.push(`Extreme packet rate (${m.packets_per_second.toFixed(0)} pps) indicates aggressive automated traffic.`)
   else if (m.packets_per_second > 100) reasons.push(`Elevated packet rate (${m.packets_per_second.toFixed(0)} pps) is unusual for routine user traffic.`)
   if (m.mean_iat < 0.01) reasons.push(`Rapid packet timing (${(m.mean_iat * 1000).toFixed(2)} ms mean IAT) suggests machine-generated activity.`)
@@ -80,7 +109,7 @@ function buildThreatData(flows) {
 }
 
 function App() {
-  const [flows, setFlows] = useState(demoFlows)
+  const [flows, setFlows] = useState(() => normalizeResults({ results: demoFlows }))
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('All')
   const [expanded, setExpanded] = useState(null)
@@ -139,11 +168,28 @@ function App() {
     if (!file) return
     setLoading(true); setNotice('Reading inference results...')
     try {
-      const data = JSON.parse(await file.text())
-      if (!Array.isArray(data.results)) throw new Error('Invalid results')
-      const parsedFlows = normalizeResults(data)
-      setFlows(parsedFlows); setGroqSummary(''); setSource(file.name); setNotice(`${parsedFlows.length} flows loaded from ${file.name}.`)
-    } catch { setNotice('This file is not a valid inference results JSON file.') }
+      if (file.name.endsWith('.pcap') || file.name.endsWith('.pcapng')) {
+        setNotice('Uploading and analyzing PCAP file...')
+        const formData = new FormData()
+        formData.append('file', file)
+        
+        const response = await fetch(`${API_URL}/api/v1/forecast/pcap`, {
+          method: 'POST',
+          body: formData,
+        })
+        
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.detail || 'PCAP analysis failed')
+        if (!Array.isArray(data.results)) throw new Error('Invalid results')
+        const parsedFlows = normalizeResults(data)
+        setFlows(parsedFlows); setGroqSummary(''); setSource(file.name); setNotice(`${parsedFlows.length} flows loaded from ${file.name}.`)
+      } else {
+        const data = JSON.parse(await file.text())
+        if (!Array.isArray(data.results)) throw new Error('Invalid results')
+        const parsedFlows = normalizeResults(data)
+        setFlows(parsedFlows); setGroqSummary(''); setSource(file.name); setNotice(`${parsedFlows.length} flows loaded from ${file.name}.`)
+      }
+    } catch (error) { setNotice(`Failed to load file: ${error.message || 'Invalid format.'}`) }
     finally { setLoading(false); event.target.value = '' }
   }
 
@@ -155,14 +201,14 @@ function App() {
       <div className="sidebar-bottom"><div className="system-status"><span className="status-dot" /> Engine operational</div><small>v0.1.0 · local instance</small></div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><div><p className="eyebrow">ROGUE KERNEL / SECURITY OPERATIONS CENTER</p><h1>{viewCopy[0]}</h1><p className="subhead">{viewCopy[1]}</p></div><div className="top-actions"><span className="connection"><span className="status-dot" /> {source}</span><label className="upload-button"><FileUp size={16} /> Load JSON<input type="file" accept=".json,application/json" onChange={uploadJson} /></label><button className="icon-button" title="Reload demo telemetry" onClick={() => { setFlows(demoFlows); setSource('Demo telemetry'); setNotice('Demo telemetry restored.') }}><RefreshCw size={17} className={loading ? 'spin' : ''} /></button></div></header>
+      <header className="topbar"><div><p className="eyebrow">ROGUE KERNEL / SECURITY OPERATIONS CENTER</p><h1>{viewCopy[0]}</h1><p className="subhead">{viewCopy[1]}</p></div><div className="top-actions"><span className="connection"><span className="status-dot" /> {source}</span><label className="upload-button"><FileUp size={16} /> Load Data<input type="file" accept=".json,application/json,.pcap,.pcapng" onChange={uploadJson} /></label><button className="icon-button" title="Reload demo telemetry" onClick={() => { setFlows(demoFlows); setSource('Demo telemetry'); setNotice('Demo telemetry restored.') }}><RefreshCw size={17} className={loading ? 'spin' : ''} /></button></div></header>
       {notice && <div className="notice"><span>{notice}</span><button onClick={() => setNotice('')}>Dismiss</button></div>}
       <div className="groq-actions"><button className="secondary-button" onClick={() => generateGroqSummary()} disabled={summaryLoading}><Sparkles size={15} /> {summaryLoading ? 'Generating...' : 'Generate Groq summary'}</button>{groqSummary && <span>Server-side analysis · Groq</span>}</div>
       {groqSummary && <section className="groq-summary"><div className="groq-heading"><Sparkles size={17} /><strong>Groq analyst narrative</strong><span>openai/gpt-oss-20b</span></div><div className="groq-copy"><ReactMarkdown remarkPlugins={[remarkGfm]}>{groqSummary}</ReactMarkdown></div></section>}
-      <section className="metrics-grid"><Metric label="Flows observed" value={flows.length} detail="current analysis window" icon={<Wifi size={17} />} /><Metric label="Priority alerts" value={criticalCount} detail={`${anomalies.length} total anomalies`} tone="danger" icon={<AlertTriangle size={17} />} /><Metric label="Average score" value={(flows.reduce((s, f) => s + (f.threat_assessment.anomaly_score || 0), 0) / Math.max(flows.length, 1)).toFixed(3)} detail="model confidence" icon={<CircleDot size={17} />} /><Metric label="Data inspected" value={formatBytes(totalBytes)} detail="across all flows" icon={<ShieldCheck size={17} />} /></section>
+      <section className="metrics-grid"><Metric label="Flows observed" value={flows.length} detail="current analysis window" icon={<Wifi size={17} />} /><Metric label="Priority alerts" value={criticalCount} detail={`${anomalies.length} total anomalies`} tone="danger" icon={<AlertTriangle size={17} />} /><Metric label="Avg anomaly score" value={(flows.reduce((s, f) => s + (f.threat_assessment.anomaly_score || 0), 0) / Math.max(flows.length, 1)).toFixed(3)} detail="distance-from-normal measure" icon={<CircleDot size={17} />} /><Metric label="Data inspected" value={formatBytes(totalBytes)} detail="across all flows" icon={<ShieldCheck size={17} />} /></section>
       <section className={`summary-panel ${summary.highestSeverity.toLowerCase()}`}><div className="summary-icon"><AlertTriangle size={19} /></div><div><div className="summary-title"><span>Executive anomaly summary</span><strong>{summary.highestSeverity} PRIORITY</strong></div><ul className="summary-list"><li>{summaryFinding}</li><li>{summaryDetail}</li><li>{summary.anomalies.length ? `Response posture: begin with ${summary.highestSeverity.toLowerCase()} alerts, validate affected hosts, and compare against known maintenance or scanning activity.` : 'Response posture: no immediate containment is indicated; keep the current baseline under observation.'}</li></ul><div className="summary-actions"><span>Recommended focus: {summary.anomalies.length ? 'validate source context · correlate alerts · preserve evidence' : 'continue baseline monitoring'}</span></div></div></section>
       <section className="chart-grid"><Panel title="Severity distribution" meta="FLOW COUNT"><div className="chart-wrap"><ResponsiveContainer width="100%" height={220}><PieChart><Pie data={severityData} dataKey="value" nameKey="name" innerRadius={62} outerRadius={84} paddingAngle={4}>{severityData.map((entry) => <Cell key={entry.name} fill={colors[entry.name]} />)}</Pie><Tooltip isAnimationActive={false} content={<ChartTooltip />} /></PieChart></ResponsiveContainer><div className="legend">{severityData.map((item) => <div key={item.name}><span style={{ background: colors[item.name] }} />{item.name}<b>{item.value}</b></div>)}</div></div></Panel><Panel title="MITRE tactics" meta="TOP SIGNALS"><ResponsiveContainer width="100%" height={220}><BarChart data={tacticData} layout="vertical" margin={{ left: 12, right: 16 }}><XAxis type="number" hide /><YAxis dataKey="name" type="category" width={112} tick={{ fill: '#8d9aae', fontSize: 11 }} axisLine={false} tickLine={false} /><Tooltip isAnimationActive={false} content={<ChartTooltip />} /><Bar dataKey="count" fill="#57b9aa" radius={[0, 3, 3, 0]} barSize={16} /></BarChart></ResponsiveContainer></Panel></section>
-      <section className="chart-grid secondary-charts"><Panel title="Anomaly score by flow" meta="MODEL CONFIDENCE"><ResponsiveContainer width="100%" height={220}><AreaChart data={scoreData} margin={{ top: 8, right: 8, bottom: 4, left: -18 }}><defs><linearGradient id="scoreFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#efaa55" stopOpacity={0.42} /><stop offset="100%" stopColor="#efaa55" stopOpacity={0.02} /></linearGradient></defs><XAxis dataKey="name" tick={{ fill: '#758195', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis domain={[0, 1]} tick={{ fill: '#758195', fontSize: 10 }} axisLine={false} tickLine={false} /><Tooltip isAnimationActive={false} content={<ChartTooltip />} /><Area type="monotone" dataKey="score" stroke="#efaa55" fill="url(#scoreFill)" strokeWidth={2} /></AreaChart></ResponsiveContainer></Panel><Panel title="Traffic intensity" meta="HOVER TO INSPECT"><ResponsiveContainer width="100%" height={220}><BarChart data={trafficData} margin={{ top: 8, right: 8, bottom: 4, left: -18 }}><XAxis dataKey="name" tick={{ fill: '#758195', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis yAxisId="left" tick={{ fill: '#758195', fontSize: 10 }} axisLine={false} tickLine={false} /><Tooltip isAnimationActive={false} content={<ChartTooltip />} /><Bar yAxisId="left" dataKey="packets" name="Packets/sec" fill="#57b9aa" radius={[3, 3, 0, 0]} barSize={20} /></BarChart></ResponsiveContainer></Panel></section>
+      <section className="chart-grid secondary-charts"><Panel title="Anomaly score by flow" meta="DISTANCE FROM NORMAL"><ResponsiveContainer width="100%" height={220}><AreaChart data={scoreData} margin={{ top: 8, right: 8, bottom: 4, left: -18 }}><defs><linearGradient id="scoreFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#efaa55" stopOpacity={0.42} /><stop offset="100%" stopColor="#efaa55" stopOpacity={0.02} /></linearGradient></defs><XAxis dataKey="name" tick={{ fill: '#758195', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis domain={[0, 1]} tick={{ fill: '#758195', fontSize: 10 }} axisLine={false} tickLine={false} /><Tooltip isAnimationActive={false} content={<ChartTooltip />} /><Area type="monotone" dataKey="score" stroke="#efaa55" fill="url(#scoreFill)" strokeWidth={2} /></AreaChart></ResponsiveContainer></Panel><Panel title="Traffic intensity" meta="HOVER TO INSPECT"><ResponsiveContainer width="100%" height={220}><BarChart data={trafficData} margin={{ top: 8, right: 8, bottom: 4, left: -18 }}><XAxis dataKey="name" tick={{ fill: '#758195', fontSize: 10 }} axisLine={false} tickLine={false} /><YAxis yAxisId="left" tick={{ fill: '#758195', fontSize: 10 }} axisLine={false} tickLine={false} /><Tooltip isAnimationActive={false} content={<ChartTooltip />} /><Bar yAxisId="left" dataKey="packets" name="Packets/sec" fill="#57b9aa" radius={[3, 3, 0, 0]} barSize={20} /></BarChart></ResponsiveContainer></Panel></section>
       <section className="panel table-panel"><div className="panel-heading"><div><h2>{activeView === 'alerts' ? 'Alert queue' : activeView === 'telemetry' ? 'Live telemetry' : 'Flow evidence'}</h2><span className="panel-caption">{activeView === 'alerts' ? 'Anomalous flows requiring analyst review' : activeView === 'telemetry' ? 'Current JSON analysis window · refresh by loading another file' : 'Prioritized network sessions and model rationale'}</span></div><div className="table-tools"><div className="search"><Search size={15} /><input placeholder="Search flow or technique" value={query} onChange={(e) => setQuery(e.target.value)} /></div><select value={filter} onChange={(e) => setFilter(e.target.value)}><option>All</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select></div></div><div className="table-scroll"><table><thead><tr><th>Flow ID</th><th>Score</th><th>Severity</th><th>ATT&amp;CK technique</th><th>Tactic</th><th>Traffic profile</th><th /></tr></thead><tbody>{displayedFlows.map((flow) => { const t = flow.threat_assessment; const m = flow.metrics; const isOpen = expanded === flow.flow_id; return <tr key={flow.flow_id} className={isOpen ? 'expanded-row' : ''}><td><button className="flow-id" onClick={() => setExpanded(isOpen ? null : flow.flow_id)}>{isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}{flow.flow_id}</button>{isOpen && <div className="reasoning"><strong>Analyst reasoning</strong>{reasonFor(flow).map((reason) => <p key={reason}><span>•</span>{reason}</p>)}</div>}</td><td><span className="score">{(t.anomaly_score || 0).toFixed(3)}</span></td><td><span className="severity" style={{ color: colors[t.severity] }}>{t.severity || 'Unknown'}</span></td><td><strong>{t.technique_id || 'N/A'}</strong><small>{t.technique_name || 'Unknown'}</small></td><td>{t.tactic || 'Unknown'}</td><td><span>{m.packets_per_second?.toFixed(1) || 0} pps</span><small>{formatBytes(m.total_length || 0)}</small></td><td><button className="inspect" onClick={() => setExpanded(isOpen ? null : flow.flow_id)}>{isOpen ? 'Close' : 'Inspect'}</button></td></tr> })}</tbody></table></div>{displayedFlows.length === 0 && <div className="empty">No flows match the current view or filter.</div>}</section>
       <footer><span><CheckCircle2 size={14} /> Inference pipeline ready</span><span>Last refreshed just now</span></footer>
     </main>
